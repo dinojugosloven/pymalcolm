@@ -3,16 +3,18 @@ import os
 import numpy as np
 import pytest
 from mock import Mock, call, patch
-from scanpointgenerator import LineGenerator, CompoundGenerator
+from scanpointgenerator import LineGenerator, CompoundGenerator, \
+    SpiralGenerator
 
 from malcolm.core import Context, Process
 from malcolm.modules.pmac.parts import PmacChildPart
 from malcolm.testutil import ChildTestCase
 from malcolm.yamlutil import make_block_creator
+from .trajectory_visualize import plot_velocities
 
-SHOW_GRAPHS = False
+# SHOW_GRAPHS = False
 # Uncomment this to show graphs when running under PyCharm
-# SHOW_GRAPHS = "PYCHARM_HOSTED" in os.environ
+SHOW_GRAPHS = "PYCHARM_HOSTED" in os.environ
 
 
 class TestPMACChildPart(ChildTestCase):
@@ -66,12 +68,12 @@ class TestPMACChildPart(ChildTestCase):
         # create some parts to mock the motion controller and 2 axes in a CS
         self.set_attributes(
             self.child_x, cs="CS1,A",
-            accelerationTime=x_velocity/x_acceleration, resolution=0.001,
+            accelerationTime=x_velocity / x_acceleration, resolution=0.001,
             offset=0.0, maxVelocity=x_velocity, readback=x_pos,
             velocitySettle=0.0, units=units)
         self.set_attributes(
             self.child_y, cs="CS1,B",
-            accelerationTime=y_velocity/y_acceleration, resolution=0.001,
+            accelerationTime=y_velocity / y_acceleration, resolution=0.001,
             offset=0.0, maxVelocity=y_velocity, readback=y_pos,
             velocitySettle=0.0, units=units)
 
@@ -109,21 +111,24 @@ class TestPMACChildPart(ChildTestCase):
             call.post('writeProfile',
                       csPort='CS1',
                       a=pytest.approx([
-                       -0.125, 0.0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.6375,
-                       0.625, 0.5, 0.375, 0.25, 0.125, 0.0, -0.125, -0.1375]),
+                          -0.125, 0.0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.6375,
+                          0.625, 0.5, 0.375, 0.25, 0.125, 0.0, -0.125,
+                          -0.1375]),
                       b=pytest.approx([
-                       0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.05,
-                       0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1]),
+                          0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.05,
+                          0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1]),
                       timeArray=pytest.approx([
-                       100000, 500000, 500000, 500000, 500000, 500000, 500000,
-                       200000, 200000, 500000, 500000, 500000, 500000, 500000,
-                       500000, 100000]),
+                          100000, 500000, 500000, 500000, 500000, 500000,
+                          500000,
+                          200000, 200000, 500000, 500000, 500000, 500000,
+                          500000,
+                          500000, 100000]),
                       userPrograms=pytest.approx([
-                       1, 4, 1, 4, 1, 4, 2, 8, 1, 4, 1, 4, 1, 4, 2, 8]),
+                          1, 4, 1, 4, 1, 4, 2, 8, 1, 4, 1, 4, 1, 4, 2, 8]),
                       velocityMode=pytest.approx([
-                       2, 0, 0, 0, 0, 0, 1, 0, 2, 0, 0, 0, 0, 0, 1, 3])
+                          2, 0, 0, 0, 0, 0, 1, 0, 2, 0, 0, 0, 0, 0, 1, 3])
                       )
-            ]
+        ]
         assert self.o.completed_steps_lookup == [
             0, 0, 1, 1, 2, 2, 3, 3,
             3, 3, 4, 4, 5, 5, 6, 6]
@@ -157,7 +162,7 @@ class TestPMACChildPart(ChildTestCase):
                           500000, 500000, 500000, 200000]),
                       userPrograms=pytest.approx([1, 4, 2, 8]),
                       velocityMode=pytest.approx([0, 0, 1, 0])
-            )
+                      )
         ]
         assert self.o.end_index == 3
         assert len(self.o.completed_steps_lookup) == 9
@@ -195,7 +200,7 @@ class TestPMACChildPart(ChildTestCase):
                     100000]),
                 userPrograms=pytest.approx([1, 4, 1, 4, 1, 4, 2, 8]),
                 velocityMode=pytest.approx([2, 0, 0, 0, 0, 0, 1, 3])),
-            ]
+        ]
 
     @patch("malcolm.modules.pmac.parts.pmacchildpart.INTERPOLATE_INTERVAL",
            0.2)
@@ -310,6 +315,40 @@ class TestPMACChildPart(ChildTestCase):
         self.o.configure(self.context, 0, p * 2, {}, generator,
                          ["x", "y"])
 
+        xp, yp, tp, vp, up = self.trajectory_to_np()
+
+        # if this test is run in pycharm then it plots some results
+        # to help diagnose issues
+        if SHOW_GRAPHS:
+            t = "{} x/time {} points".format(title, xp.size)
+            plot_velocities((xp, yp, tp, vp, up), t, 0.15)
+
+        return xp
+
+    def test_turnaround_overshoot(self):
+        points = 30
+        x1 = self.turnaround_overshoot(
+            go_really_fast=False,
+            title='test_turnaround_overshoot 10 slower',
+            points=points)
+        self.child.handled_requests.reset_mock()
+        x2 = self.turnaround_overshoot(
+            go_really_fast=True,
+            title='test_turnaround_overshoot 10 fast',
+            points=points)
+        self.child.handled_requests.reset_mock()
+
+        # checks that the two turnarounds only contain points
+        # between the first line end and the second line start
+        p = points * 2 + 1 # first turnaround point
+        assert x2[p] > x2[p+1] > x2[p+2], \
+            "Bad turnaround point in fast profile"
+        assert x1[p] > x1[p+1] > x1[p+2] > x1[p+3] > x1[p+4] > x1[p+5], \
+            "Bad turnaround point in slow profile"
+
+    def trajectory_to_np(self):
+        # create some numpy arrays to represent the sequence of positions
+        # sent to pmac by the most recent call to configure
         name, args, kwargs = self.child.handled_requests.mock_calls[2]
         assert name == "post"
         assert args[0] == "moveCS1"
@@ -317,6 +356,8 @@ class TestPMACChildPart(ChildTestCase):
         xp = np.array([kwargs['a']])
         yp = np.array([kwargs['b']])
         tp = np.array([0])
+        vp = np.array([0])
+        up = np.array([0])
         # And the profile write
         name, args, kwargs = self.child.handled_requests.mock_calls[-1]
         assert name == "post"
@@ -324,42 +365,42 @@ class TestPMACChildPart(ChildTestCase):
         xp = np.append(xp, kwargs["a"])
         yp = np.append(yp, kwargs["b"])
         tp = np.append(tp, kwargs["timeArray"])
+        vp = np.append(vp, kwargs["velocityMode"])
+        up = np.append(up, kwargs["userPrograms"])
+        return xp, yp, tp, vp, up
 
-        # if this test is run in pycharm then it plots some results
-        # to help diagnose issues
+    def test_turnaround_points(self):
+        """A test to demonstrate that the generated turnaround points reflect
+        the changes in acceleration of any of the axes
+        todo: work in progress - currently using for visualization"""
+
+        step_time = .15
+
+        self.set_motor_attributes(
+            x_acceleration=1. / 0.001, y_acceleration=1. / 0.003,
+            x_velocity=100, y_velocity=50,
+            x_pos=0, y_pos=0)
+
+        xs = LineGenerator("x", "mm", 0, 10, 6)
+        ys = LineGenerator("y", "mm", 0, 8, 3)
+
+        gen = CompoundGenerator([ys, xs], [], [], step_time)
+        gen.prepare()
+        self.o.configure(self.context, 0, gen.size, {}, gen, ["x", "y"])
         if SHOW_GRAPHS:
-            import matplotlib.pyplot as plt
-            # plt.title("{} x/y {} points".format(title, xp.size))
-            # plt.plot(xp, yp, '+', ms=2.5)
-            # plt.show()
+            plot_velocities(self.trajectory_to_np(),
+                            'Raster Test', 0.15)
 
-            # plt.title("{} x/point {} points".format(title, xp.size))
-            # plt.plot(xp, range(xp.size), '+', ms=2.5)
-            # plt.show()
+        # todo problems
+        #  1) first point velocity in X looks wrong in each line of raster
+        #  2) initial position looks wrong and there are two points before 1st
+        #     line start point
 
-            times = np.cumsum(tp / 1000)  # show in millisecs
-            plt.title("{} x/time {} points".format(title, xp.size))
+        s = SpiralGenerator(["x", "y"], "mm", [0.0, 0.0], 5.0, scale=5)
 
-            plt.plot(xp, times, '+', ms=2.5)
-            plt.show()
-
-        return xp
-
-    def test_turnaround_overshoot(self):
-        x1 = self.turnaround_overshoot(
-            go_really_fast=False,
-            title='test_turnaround_overshoot 10 slower',
-            points=30)
-        self.child.handled_requests.reset_mock()
-        x2 = self.turnaround_overshoot(
-            go_really_fast=True,
-            title='test_turnaround_overshoot 10 fast',
-            points=30)
-        self.child.handled_requests.reset_mock()
-
-        # checks that the two turnarounds only contain points
-        # between the first line end and the second line start
-        assert x2[61] > x2[62] > x2[63], \
-            "Bad turnaround point in fast profile"
-        assert x1[61] > x1[62] > x1[63] > x1[64] > x1[65] > x1[66], \
-            "Bad turnaround point in slow profile"
+        gen = CompoundGenerator([s], [], [], 0.15)
+        gen.prepare()
+        self.o.configure(self.context, 0, gen.size, {}, gen, ["x", "y"])
+        if SHOW_GRAPHS:
+            plot_velocities(self.trajectory_to_np(),
+                            'Spiral Test', step_time)
