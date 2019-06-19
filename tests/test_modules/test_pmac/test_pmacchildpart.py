@@ -1,6 +1,7 @@
 import numpy as np
+import os
 import pytest
-from mock import Mock, call, patch
+from mock import Mock, call, patch, ANY
 from scanpointgenerator import LineGenerator, CompoundGenerator, \
     SpiralGenerator, StaticPointGenerator
 
@@ -10,9 +11,9 @@ from malcolm.testutil import ChildTestCase
 from malcolm.yamlutil import make_block_creator
 from .trajectory_visualize import plot_velocities
 
-# SHOW_GRAPHS = False
+SHOW_GRAPHS = False
 # Uncomment this to show graphs when running under PyCharm
-SHOW_GRAPHS = "PYCHARM_HOSTED" in os.environ
+# SHOW_GRAPHS = "PYCHARM_HOSTED" in os.environ
 
 
 class TestPMACChildPart(ChildTestCase):
@@ -393,7 +394,7 @@ class TestPMACChildPart(ChildTestCase):
         up = np.append(up, kwargs["userPrograms"])
         return xp, yp, tp, vp, up
 
-    def test_turnaround_points(self):
+    def test_raster_points(self):
         """A test to demonstrate that the generated turnaround points reflect
         the changes in acceleration of any of the axes
         todo: work in progress - currently using for visualization"""
@@ -413,16 +414,23 @@ class TestPMACChildPart(ChildTestCase):
         self.o.configure(self.context, 0, gen.size, {}, gen, ["x", "y"])
         if SHOW_GRAPHS:
             plot_velocities(self.trajectory_to_np(),
-                            'Raster Test', 0.15)
+                            'Raster Test', step_time)
 
-        # todo problems
-        #  1) first point velocity in X looks wrong in each line of raster
-        #  2) initial position looks wrong and there are two points before 1st
-        #     line start point
+    def test_spiral_points(self):
+        """A test to demonstrate that the generated turnaround points reflect
+        the changes in acceleration of any of the axes
+        todo: work in progress - currently using for visualization"""
+
+        step_time = .1
+
+        self.set_motor_attributes(
+            x_acceleration=1. / 0.001, y_acceleration=1. / 0.001,
+            x_velocity=100, y_velocity=100,
+            x_pos=0, y_pos=0)
 
         s = SpiralGenerator(["x", "y"], "mm", [0.0, 0.0], 5.0, scale=5)
 
-        gen = CompoundGenerator([s], [], [], 0.15)
+        gen = CompoundGenerator([s], [], [], step_time)
         gen.prepare()
         self.o.configure(self.context, 0, gen.size, {}, gen, ["x", "y"])
         if SHOW_GRAPHS:

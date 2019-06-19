@@ -45,21 +45,23 @@ def plot_velocities(np_arrays, title='Plot', step_time=0.15):
     fig1 = plt.figure(figsize=(8, 6), dpi=300)
     plt.title(title)
 
-    # a multiply in ms for the velocity vectors
-    # uses 80% so that we can see the ends of the vectors in staight lines
-    ms = step_time / 2 * 1000000 * .80
+    # a multiply in ms for the velocity vector
+    ms = step_time / 2 * 1000000
 
     # plot some velocity vectors
     vxs = np.zeros(len(xs))
     vys = np.zeros(len(xs))
-    velocity_colors = ['#ff808060', '#80ff8060', '#8080ff60', '#80ffff60']
+    velocity_colors = ['#ff000030', '#df005030', '#af00A030', '#8f00f030']
     for i in range(1, len(xs) - 1):
         if modes[i] == VelMode.PrevNext:
             vxs[i] = velocity_prev_next(xs[i - 1], xs[i], xs[i + 1], ts[i],
                                         ts[i])
             vys[i] = velocity_prev_next(ys[i - 1], ys[i], ys[i + 1], ts[i],
                                         ts[i + 1])
-        elif modes[i] == VelMode.PrevCurrent:
+        elif modes[i] == VelMode.PrevCurrent or \
+                modes[i] == VelMode.CurrentNext:
+            # TODO remove above or clause once malcolm has been updated
+            #  (it will no longer use VelMode.CurrentNext)
             vxs[i] = velocity_prev_current(xs[i - 1], vxs[i - 1], xs[i],
                                            ts[i])
             vys[i] = velocity_prev_current(ys[i - 1], vys[i - 1], ys[i],
@@ -69,7 +71,10 @@ def plot_velocities(np_arrays, title='Plot', step_time=0.15):
             vys[i] = velocity_current_next(ys[i], ys[i + 1], ts[i])
 
         # plot a line to represent the velocity vector
-        print('velocity vector:', xs[i], ys[i], vxs[i] * ms, vys[i] * ms)
+        s = 'velocity vector {}: prev=({},{}) next=({},{}) ' \
+            'vel=({},{}), time={}'
+        print(s.format(i, xs[i-1], ys[i-1], xs[i], ys[i],
+                       vxs[i] * ms, vys[i] * ms, ts[i]))
         plt.plot([xs[i], xs[i] + vxs[i] * ms],
                  [ys[i], ys[i] + vys[i] * ms],
                  color=velocity_colors[i % len(velocity_colors)])

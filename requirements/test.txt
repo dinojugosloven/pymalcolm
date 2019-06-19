@@ -13,4 +13,6 @@ h5py>=2.8.0
 annotypes>=0.17
 p4p>=3.3.0
 vdsgen>=0.5
+matplotlib
+
 
